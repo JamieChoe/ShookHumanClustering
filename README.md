@@ -1,17 +1,25 @@
-# Re-Analyzing the Landen Dataset: Single-Cell RNA-Seq of Day 0 and Day 1 Wounds
-Jamie Choe, Gabriel Batzli
+<div style="display: flex; align-items: flex-start; gap: 20px;">
 
-The Shook Lab
+<div style="flex: 1;">
 
-George Washington University
+# Re-Analyzing the Landen Dataset: Single-Cell RNA-Seq of Day 0 and Day 1 Wounds  
+Jamie Choe, Gabriel Batzli  
+**The Shook Lab**  
+George Washington University  
+**July, 2025**
 
-July, 2025
+R code that was written for the Shook Lab at George Washington University. The aim of the project was to re-analyze the Landen Lab data set (GSE241132), specifically looking at day 0 (before wounding) and day 1 wounds. Cell types and gene expression patterns seen in the human data were then compared to mouse data from the Shook Lab. Lastly, a user-friendly shinycell app was created for easy downstream analysis.
 
-R code that was written for the Shook Lab at George Washington University. The aim of the project was to re-analyze the Landen Lab data set (GSE241132), specifically looking at day 0 (before wounding) and day 1 wounds. Cell types and gene expression patterns seen in the human data were then compared to mouse data from the Shook Lab. Lastly, a user-friendly shinycell app was created for easy downstream analysis. 
+**Link to shinyapp**: [https://jamiechoe.shinyapps.io/shinyapp/](https://jamiechoe.shinyapps.io/shinyapp/)
 
-Link to shinyapp: https://jamiechoe.shinyapps.io/shinyapp/
+</div>
 
-![MinimalUmapLarger](https://github.com/user-attachments/assets/794ce8e3-d3af-4c07-99bf-7a5636a519d2)
+<div style="flex: 1;">
+  <img src="https://github.com/user-attachments/assets/794ce8e3-d3af-4c07-99bf-7a5636a519d2" alt="MinimalUmapLarger" width="100%" />
+</div>
+
+</div>
+
 
 <img width="2090" height="1206" alt="Image" src="https://github.com/user-attachments/assets/a66593fc-c831-4ef7-b53e-8cfe04024fa3" />
 

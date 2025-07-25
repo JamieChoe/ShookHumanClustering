@@ -15,6 +15,9 @@ Link to shinyapp: https://jamiechoe.shinyapps.io/shinyapp/
 Citation: Liu Z, Bian X, Luo L, Björklund ÅK, Li L, Zhang L, Chen Y, Guo L, Gao J, Cao C, Wang J, He W, Xiao Y, Zhu L, Annusver K, Gopee NH, Basurto-Lozada D, Horsfall D, Bennett CL, Kasper M, Haniffa M, Sommar P, Li D, Landén NX. Spatiotemporal single-cell roadmap of human skin wound healing. Cell Stem Cell. 2025 Mar 6;32(3):479-498.e8. doi: 10.1016/j.stem.2024.11.013. Epub 2024 Dec 26. PMID: 39729995.
 
 
+<img width="1052" height="601" alt="Image" src="https://github.com/user-attachments/assets/11aba316-fac6-4d48-a2d4-09eaa9013660" />
+
+
 
 
 

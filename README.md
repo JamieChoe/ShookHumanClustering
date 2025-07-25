@@ -14,6 +14,8 @@ Link to shinyapp: https://jamiechoe.shinyapps.io/shinyapp/
 
 <img width="2090" height="1206" alt="Image" src="https://github.com/user-attachments/assets/a66593fc-c831-4ef7-b53e-8cfe04024fa3" />
 
+![MinimalUmapLarger](https://github.com/user-attachments/assets/794ce8e3-d3af-4c07-99bf-7a5636a519d2)
+
 
 
 

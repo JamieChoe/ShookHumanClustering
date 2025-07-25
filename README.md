@@ -12,7 +12,7 @@ R code that was written for the Shook Lab at George Washington University. The a
 Link to shinyapp: https://jamiechoe.shinyapps.io/shinyapp/
 
 
-<img width="1052" height="601" alt="Image" src="https://github.com/user-attachments/assets/11aba316-fac6-4d48-a2d4-09eaa9013660" />
+<img width="2090" height="1206" alt="Image" src="https://github.com/user-attachments/assets/a66593fc-c831-4ef7-b53e-8cfe04024fa3" />
 
 
 

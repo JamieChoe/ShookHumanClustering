@@ -1,0 +1,1220 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Merged_Donors
+
+## Pre-processing:
+
+What to filter out:
+
+-   cells expressing \<500 genes
+
+-   cells expressing \>20% MT genes
+
+-   \<1000 gene counts
+
+-   genes expressed in fewer than 10 cells
+
+```{r,collapse = TRUE}
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(sctransform)
+library(ggplot2)
+message("libs loaded")
+
+
+options(future.globals.maxSize = 16 * 1024^3)  # 16 GB
+
+# Load the PBMC datasets
+Donor5_D0.data <- Read10X(data.dir = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/RawData/PWH26D0")
+Donor5_D1.data <- Read10X(data.dir = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/RawData/PWH26D1")
+Donor4_D0.data <- Read10X(data.dir = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/RawData/PWH27D0")
+Donor4_D1.data <- Read10X(data.dir = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/RawData/PWH27D1")
+Donor3_D0.data <- Read10X(data.dir = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/RawData/PWH28D0")
+Donor3_D1.data <- Read10X(data.dir = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/RawData/PWH28D1")
+
+# Create objects. Filter out cells expressing <500 genes, and genes expressed in < 10 cells. 
+Donor5_D0 <- CreateSeuratObject(counts = Donor5_D0.data, project = "Donor5_Day0", min.cells = 10, min.features = 500)
+Donor5_D1 <- CreateSeuratObject(counts = Donor5_D1.data, project = "Donor5_Day1",min.cells = 10, min.features = 500)
+Donor4_D0 <- CreateSeuratObject(counts = Donor4_D0.data, project = "Donor4_Day0",min.cells = 10, min.features = 500)
+Donor4_D1 <- CreateSeuratObject(counts = Donor4_D1.data, project = "Donor4_Day1",min.cells = 10, min.features = 500)
+Donor3_D0 <- CreateSeuratObject(counts = Donor3_D0.data, project = "Donor3_Day0",min.cells = 10, min.features = 500)
+Donor3_D1 <- CreateSeuratObject(counts = Donor3_D1.data, project = "Donor3_Day1",min.cells = 10, min.features = 500)
+
+Donor5_D0[["percent.mt"]] <- PercentageFeatureSet(Donor5_D0, pattern = "^MT-")
+Donor5_D1[["percent.mt"]] <- PercentageFeatureSet(Donor5_D1, pattern = "^MT-")
+Donor4_D0[["percent.mt"]] <- PercentageFeatureSet(Donor4_D0, pattern = "^MT-")
+Donor4_D1[["percent.mt"]] <- PercentageFeatureSet(Donor4_D1, pattern = "^MT-")
+Donor3_D0[["percent.mt"]] <- PercentageFeatureSet(Donor3_D0, pattern = "^MT-")
+Donor3_D1[["percent.mt"]] <- PercentageFeatureSet(Donor3_D1, pattern = "^MT-")
+
+
+#Create list of objects
+DonorList = list(Donor5_D0,Donor5_D1,Donor4_D0,Donor4_D1,Donor3_D0,Donor3_D1)
+message("List created")
+
+#Filtering out each object
+DonorList <- lapply(DonorList, function(obj) {
+  subset(obj, subset = nCount_RNA > 1000 & percent.mt < 20)})
+message("Filering each object finished!")
+
+#Using SCTransform on each object
+Merged_Donors <- lapply(X = DonorList, FUN = SCTransform, vst.flavor = "v2", vars.to.regress = "percent.mt")
+message("SCTransform Finished!")
+
+#Integration
+features <- SelectIntegrationFeatures(object.list = Merged_Donors, nfeatures = 3000)
+Merged_Donors <- PrepSCTIntegration(object.list = Merged_Donors, anchor.features = features)
+message("Integration prepped, finding anchors now.")
+
+#Anchors
+DonorAnchors <- FindIntegrationAnchors(object.list = Merged_Donors, normalization.method = "SCT", anchor.features = features)
+#saveRDS(DonorAnchors,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/Merged_1_Anchors.rds") 
+#(Only enable if you want to save the ancors)
+
+message("Anchors made and saved")
+
+Merged_Donors <- IntegrateData(anchorset = DonorAnchors, normalization.method = "SCT")
+message("Integration complete.")
+
+#Run PCA to find PCs
+Merged_Donors <- RunPCA(Merged_Donors, verbose = FALSE)
+saveRDS(Merged_Donors, "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/Merged_Donors.rds")
+message("Finished running PCA")
+
+#Creating Elbowplot
+EP <- ElbowPlot(Merged_Donors)
+ggsave("/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/Merged_1_Elbow", plot = EP, width = 8, height = 6)
+message("Elbowplot created and saved")
+```
+
+```{r}
+library(openxlsx) 
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(sctransform)
+library(ggplot2)
+message("libs loaded")
+
+Merged_Donors <- readRDS("/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/Merged_Donors.rds")
+
+# Process the data
+
+#Setting dims = 11
+Merged_Donors <- RunUMAP(Merged_Donors, reduction = "pca", dims = 1:11)
+
+Merged_Donors <- FindNeighbors(Merged_Donors, reduction = "pca", dims = 1:11)
+
+#Resolutions 
+
+#Doing three resolutions to see which one is best. 
+Merged_Donors <- FindClusters(Merged_Donors, resolution = 0.5)
+Merged_Donors <- FindClusters(Merged_Donors, resolution = 0.1)
+Merged_Donors <- FindClusters(Merged_Donors, resolution = 0.05)
+
+
+# Umaps
+dim_plots <- list(
+  DimPlot_clusters0.5 = DimPlot(Merged_Donors, reduction = "umap", group.by = "integrated_snn_res.0.5") + ggtitle("Resolution 0.5"),
+  DimPlot_clusters0.1 = DimPlot(Merged_Donors, reduction = "umap", group.by = "integrated_snn_res.0.1") + ggtitle("Resolution 0.1"),
+  DimPlot_clusters0.05 = DimPlot(Merged_Donors, reduction = "umap", group.by = "integrated_snn_res.0.05") + ggtitle("Resolution 0.05")
+)
+
+message("UMAPs created!")
+
+#Saving the UMAPs
+
+#PDF
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0("/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/", plot_name, ".pdf"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+#PNG
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0("/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/", plot_name, ".png"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+message("UMAPs saved")
+
+
+#FindAllMarkers!
+Merged_Donors <- PrepSCTFindMarkers(Merged_Donors)
+
+
+Markers0.5 <- FindAllMarkers(Merged_Donors, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.5")
+write.xlsx(Markers0.5,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/MergedMarkers_0.5.xlsx")
+
+Markers0.1 <- FindAllMarkers(Merged_Donors, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.1")
+write.xlsx(Markers0.1,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/MergedMarkers_0.1.xlsx")
+
+Markers0.05 <- FindAllMarkers(Merged_Donors, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.05")
+write.xlsx(Markers0.05,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/MergedMarkers_0.05.xlsx")
+message("Find All Markers Finished and Saved")
+
+
+#Save Object
+saveRDS(Merged_Donors, "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/Merged_Donors.rds")
+
+message("obj saved")
+```
+
+## Analyzing Merged_Donors
+
+#### Keratinicyte 1 - KRT1
+
+```{r}
+cluster0.markers <- FindMarkers(Merged_Donors, ident.1 = 0, only.pos = TRUE)
+head(cluster0.markers, n = 15)
+```
+
+**KRT1:** provides instructions for making keratin 1.
+
+**TIMP1:** upregulated in keratinocytes during inflammation. Can affect cell proliferation and tissue remodeling.
+
+```{r}
+FeaturePlot(Merged_Donors, features = c("KRT1"), cols = c("lightgrey", "#f7766dff"))
+```
+
+#### Keratinocyte 2 - KRT14
+
+```{r}
+cluster1.markers <- FindMarkers(Merged_Donors, ident.1 = 1, only.pos = TRUE)
+head(cluster1.markers, n = 15)
+```
+
+**KRT14:** encodes for keratin 14. Provides structural support for the keratinocytes.
+
+**ITGA6, ITGA3, ITGA2:** helps keratinocytes attach to the basement membrane beneath the epidermis.
+
+```{r}
+FeaturePlot(Merged_Donors, features = "KRT14", cols = c("lightgrey","#d49200ff"))
+```
+
+#### Fibroblast - COL1A1
+
+```{r}
+cluster2.markers <- FindMarkers(Merged_Donors, ident.1 = 2, only.pos = TRUE)
+head(cluster2.markers, n = 15)
+```
+
+**COL1A1:** provides the instructions for producing type I collagen. Fibroblasts rely heavily on COL1A1.
+
+**MMP2:** released by fibroblasts, and is a key enzyme in the breakdown of ECM components.
+
+```{r}
+FeaturePlot(Merged_Donors, features = "COL1A1", cols = c("lightgrey","#94aa01ff"))
+```
+
+#### Myeloid - LYZ
+
+```{r}
+cluster3.markers <- FindMarkers(Merged_Donors, ident.1 = 3, only.pos = TRUE)
+head(cluster3.markers, n = 15)
+```
+
+**LYZ:** Produced and released by myeloid cells, serves as crucial for the immune system. **TYROBP:** plays a crucial role in myeloid cell activation and immune responses.
+
+```{r}
+FeaturePlot(Merged_Donors, features = "LYZ", cols = c("lightgrey","#03bb38ff"))
+```
+
+#### Lymphoid - CD3D
+
+```{r}
+cluster4.markers <- FindMarkers(Merged_Donors, ident.1 = 4, only.pos = TRUE)
+head(cluster4.markers, n = 15)
+```
+
+**CD3D:** involved in T-cell development and signal transduction
+
+```{r}
+FeaturePlot(Merged_Donors, features = "CD3D", cols = c("lightgrey","#03c19fff"))
+```
+
+#### Mast - TPSAB1
+
+```{r}
+cluster5.markers <- FindMarkers(Merged_Donors, ident.1 = 5, only.pos = TRUE)
+head(cluster5.markers, n = 15)
+```
+
+**TPSAB1:** codes for tryptase, a protein that is highly concentrated in mast cells.
+
+```{r}
+FeaturePlot(Merged_Donors, features = "TPSAB1", cols = c("lightgrey","#00bae3ff"))
+```
+
+#### Endothelial - PECAM1
+
+```{r}
+cluster6.markers <- FindMarkers(Merged_Donors, ident.1 = 6, only.pos = TRUE)
+head(cluster6.markers, n = 15)
+```
+
+**PECAM1:** expressed by endothelial cells, maintain the integrity of endothelial cell junctions.
+
+```{r}
+FeaturePlot(Merged_Donors, features = "PECAM1", cols = c("lightgrey","#629dffff"))
+```
+
+#### Pericyte - ACTA2
+
+```{r}
+cluster7.markers <- FindMarkers(Merged_Donors, ident.1 = 7, only.pos = TRUE)
+head(cluster7.markers, n = 15)
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "ACTA2", cols = c("lightgrey","#db71fbff"))
+```
+
+#### Melanocytes - TYRP1
+
+```{r}
+cluster8.markers <- FindMarkers(Merged_Donors, ident.1 = 8, only.pos = TRUE)
+head(cluster8.markers, n = 15)
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "TYRP1", cols = c("lightgrey","#ff61c3ff"))
+```
+
+## FindALLMarkers
+
+Creates new variable called Merged_Donors_Markers that is the unfiltered markers for Merged_Donors.
+
+```{r}
+Merged_Donors_Markers = FindAllMarkers(Merged_Donors, logfc.threshold = 0.25, min.pct = 0.25)
+
+#Create new column
+Merged_Donors_Markers$min.pct.diff = (Merged_Donors_Markers$pct.1 - Merged_Donors_Markers$pct.2)
+#Order in descending order
+Merged_Donors_Markers = Merged_Donors_Markers[order(Merged_Donors_Markers$min.pct.diff, decreasing = TRUE),]  
+#Print the first 20 rows of the table
+head(Merged_Donors_Markers, n = 20)
+
+#Save Matrix to excel
+install.packages("writexl")
+library("writexl") 
+
+write_xlsx(Merged_Donors_Markers,"UnfilteredMarkers.xlsx",col_names = TRUE,format_headers = TRUE)
+```
+
+## Creating UMAP
+
+Creates a labeled UMAP. Also re-labels the Idents of Merged_Donors.
+
+```{r}
+#Assigns IDs
+Labeled_UMAP.ids <- c("Keratinocyte 1","Keratinocyte 2","Fibroblasts","Myeloid","Lymphoid","Mast","Endothelial","Pericytes","Melanocytes")
+
+#Names each level of Merged_Donors
+names(Labeled_UMAP.ids) <- levels(Merged_Donors)
+Merged_Donors <- RenameIdents(Merged_Donors, Labeled_UMAP.ids)
+DimPlot(Merged_Donors, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+ggsave(filename = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/LabeledUMAP.png", height = 4, width = 8)
+```
+
+integrated UMAP - Creates a UMAP that shows the day that sample was taken. Demonstrates the success of integration.
+
+```{r}
+
+Merged_Donors$day <- ifelse(grepl("Day0", Merged_Donors$orig.ident), "D0", "D1")
+
+DimPlot(Merged_Donors, group.by = "day", label = TRUE) + ggtitle("D0 vs. D1")
+```
+
+## Violin Plot
+
+```{r}
+violin_genes = c("KRT1", "ITGA6","MMP2","LYZ","CD3D","TPSAB1","PECAM1","MYH11","TYR")
+VlnPlot(object = Merged_Donors, features = violin_genes, stack = TRUE)
+```
+
+------------------------------------------------------------------------
+
+# Myeloid
+
+## Pre-processing
+
+```{r}
+
+library(Seurat)
+library(tidyverse)
+library(dplyr)
+library(patchwork)
+library(SeuratObject)
+
+Merged_Donors <- readRDS("/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Merged_Donors/Merged_Donors.rds")
+
+#Subsetting from Merged Donors to isolate Myeloid cluster
+MyeloidCluster <- subset(x = Merged_Donors, idents = c("Myeloid"))
+
+MyeloidCluster <- SplitObject(MyeloidCluster, split.by = "day")
+
+#Using SCTransform
+MyeloidCluster <- lapply(MyeloidCluster, SCTransform, vst.flavor = "v2")
+message("SCTransform Finished!")
+
+#Integration
+features <- SelectIntegrationFeatures(object.list = MyeloidCluster, nfeatures = 3000)
+MyeloidCluster <- PrepSCTIntegration(object.list = MyeloidCluster, anchor.features = features)
+message("Integration prepped, finding anchors now.")
+
+#Anchors
+DonorAnchors <- FindIntegrationAnchors(object.list = MyeloidCluster, normalization.method = "SCT", anchor.features = features)
+#saveRDS(DonorAnchors, "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Myeloid_Subcluster/Myeloid_Anchors.rds")
+message("Anchors made and saved")
+
+MyeloidCluster <- IntegrateData(anchorset = DonorAnchors, normalization.method = "SCT")
+message("Integration complete.")
+
+
+#Run PCA to find PCs
+MyeloidIntegrated <- RunPCA(MyeloidCluster)
+#saveRDS(MyeloidCluster, "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Myeloid_Subcluster/MyeloidIntegrated.rds")
+message("Finished running PCA")
+
+#Creating Elbowplot
+ElbowPlot(MyeloidIntegrated)
+```
+
+```{r}
+install.packages("openxlsx", dependencies = TRUE)
+library(openxlsx)
+library(writexl)
+
+MyeloidCluster <- readRDS("/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Myeloid_Subcluster/MyeloidIntegrated.rds")
+
+
+# Process the data
+MyeloidIntegrated <- RunUMAP(MyeloidIntegrated, reduction = "pca", dims = 1:11)
+
+MyeloidIntegrated <- FindNeighbors(MyeloidIntegrated, reduction = "pca", dims = 1:11)
+
+
+#Resolutions 
+MyeloidIntegrated <- FindClusters(MyeloidIntegrated, resolution = 0.5)
+MyeloidIntegrated <- FindClusters(MyeloidIntegrated, resolution = 0.4)
+MyeloidIntegrated <- FindClusters(MyeloidIntegrated, resolution = 0.3)
+MyeloidIntegrated <- FindClusters(MyeloidIntegrated, resolution = 0.2)
+MyeloidIntegrated <- FindClusters(MyeloidIntegrated, resolution = 0.1)
+MyeloidIntegrated <- FindClusters(MyeloidIntegrated, resolution = 0.05)
+message("FindClusters complete. Beginning UMAPs")
+
+
+# Umaps
+dim_plots <- list(
+  DimPlot_clusters0.5 = DimPlot(MyeloidIntegrated, reduction = "umap", group.by = "integrated_snn_res.0.5") + ggtitle("Resolution 0.5"),
+  DimPlot_clusters0.1 = DimPlot(MyeloidIntegrated, reduction = "umap", group.by = "integrated_snn_res.0.1") + ggtitle("Resolution 0.1"),
+  DimPlot_clusters0.05 = DimPlot(MyeloidIntegrated, reduction = "umap", group.by = "integrated_snn_res.0.05") + ggtitle("Resolution 0.05"),
+  DimPlot_clusters0.3 = DimPlot(MyeloidIntegrated, reduction = "umap", group.by = "integrated_snn_res.0.3") + ggtitle("Resolution 0.3"),
+  DimPlot_clusters0.2 = DimPlot(MyeloidIntegrated, reduction = "umap", group.by = "integrated_snn_res.0.2") + ggtitle("Resolution 0.2")
+)
+
+message("UMAPs created!")
+
+#Saving the UMAPs
+
+#PDF
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0(plot_name, ".pdf"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+#PNG
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0(plot_name, ".png"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+message("UMAPs saved")
+
+MyeloidIntegrated <- PrepSCTFindMarkers(MyeloidIntegrated)
+
+#FindAllMarkers
+Markers0.5 <- FindAllMarkers(MyeloidIntegrated, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.5")
+write_xlsx(Markers0.5,"/home/gabriel.batzli/jamie_project/Markers_0.5.xlsx",col_names = TRUE,format_headers = TRUE)
+
+Markers0.1 <- FindAllMarkers(MyeloidIntegrated, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.1")
+write_xlsx(Markers0.1,"/home/gabriel.batzli/jamie_project/Markers_0.1.xlsx",col_names = TRUE,format_headers = TRUE)
+
+Markers0.05 <- FindAllMarkers(MyeloidIntegrated, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.05")
+write_xlsx(Markers0.05,"/home/gabriel.batzli/jamie_project/Markers_0.05.xlsx",col_names = TRUE,format_headers = TRUE)
+message("Find All Markers Finished and Saved")
+
+write_xlsx(Markers0.2,"Markers_0.2.xlsx",col_names = TRUE,format_headers = TRUE)
+
+saveRDS(MyeloidIntegrated, "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Myeloid_Subcluster/Myeloid_Integrated.rds")
+
+SaveSeuratRds(MyeloidIntegrated)
+```
+
+## QC Plot
+
+Displays the nFeatures, nCount, and percent mitochondrial genes. Acts as quality control.
+
+orig.ident - The project name you passed in the project = argument nCount_RNA - The total number of RNA molecules detected in the cell nFeature_RNA - The number of unique genes detected in the cell
+
+```{r}
+VlnPlot(MyeloidIntegrated, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3) 
+```
+
+## Analyzing MyeloidIntegrated
+
+#### Mac 1 - SOD2
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "SOD2", cols = c("lightgrey","#d49200"),min.cutoff = 0, max.cutoff = 4)
+```
+
+#### Mac 2 - C1QA
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "C1QA",cols = c("lightgrey","#94aa01"),min.cutoff = 0, max.cutoff = 4)
+```
+
+#### cDC1 - CLEC9A
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "CLEC9A",cols = c("lightgrey","#027661"),min.cutoff = 0, max.cutoff = 4)
+```
+
+#### cDC2 - CD1C
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "CD1C",cols = c("#eeeeee","#f7766dff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+#### DC3 - LAMP3
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "LAMP3",cols = c("#eeeeee","#00bae3"),min.cutoff = 0, max.cutoff = 4)
+```
+
+#### pDC - MZB1
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "MZB1",cols = c("#eeeeee","#db71fb"),min.cutoff = 0, max.cutoff = 4)
+```
+
+#### langerhans - CD207
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "CD207",cols = c("lightgrey","#9591fc"),min.cutoff = 0, max.cutoff = 4)
+```
+
+#### Monocytes - FCN1
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "FCN1",cols = c("lightgrey","#03c17d"),min.cutoff = 0, max.cutoff = 4)
+```
+
+## UMAP TIME
+
+```{r}
+#Subsetting Doublets out
+MyeloidSinglets = subset(MyeloidIntegrated, idents = c("0","1","2","4","5","6","7","8"))
+```
+
+```{r}
+Labeled_UMAP.ids <- c("cDC2","Mac 2","Mac 1","Monocytes","cDC1","DC3","Langerhans","pDC")
+names(Labeled_UMAP.ids) <- levels(MyeloidSinglets)
+MyeloidSinglets <- RenameIdents(MyeloidSinglets, Labeled_UMAP.ids)
+DimPlot(MyeloidSinglets, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+ggsave(filename = "LabeledUMAPMyeloid.png", height = 4, width = 8)
+```
+
+## Bubble Plot
+
+```{r}
+markers.to.plot <- c("IL23A",
+"ALOX15",
+"CD1C",
+"PTTG1",
+"AREG",
+"CCL18",
+"MAMDC2",
+"CCL13",
+"LYVE1",
+"RAB3IL1",
+"HEY1",
+"CCL20",
+"KANK1",
+"SERPINB2",
+"CRADD",
+"FAM83F",
+"FERMT1",
+"AHNAK2",
+"RP11-191L9.4",
+"NECTIN4",
+"PLAC8",
+"FPR2",
+"S100A12",
+"THBS1",
+"FCN1",
+"CLEC9A",
+"XCR1",
+"PPY",
+"PAK3",
+"LINC01724",
+"TREML1",
+"ADAM12",
+"CCDC68",
+"SYNPO",
+"UBD",
+"RP11-597D13.8",
+"IL22RA2",
+"CHAD",
+"SLC27A2",
+"CD207",
+"PTCRA",
+"IGLC3",
+"MZB1",
+"JCHAIN",
+"GZMB",
+"LINC01436",
+"MEG8",
+"F10",
+"WIF1",
+"HAS2")
+
+Idents(MyeloidIntegrated) <- factor(Idents(MyeloidIntegrated), levels = c("0", "1", "2", "3","4","5","6","7","8","9"))
+
+
+
+MachroDot <- DotPlot(MyeloidIntegrated, features = markers.to.plot, dot.scale = 10, cols = c("white", "maroon")) + RotatedAxis()
+MachroDot
+```
+
+## Violin Plot
+
+```{r}
+Idents(MyeloidSinglets) <- factor(Idents(MyeloidSinglets), levels = c("Mac 1","Mac 2","Monocytes","cDC2","DC3","cDC1","pDC","Langerhans"))
+
+violin_genes_myeloid = c("CCL20","C1QA","FCN1","CD1C","LAMP3","CLEC9A","MZB1","CD207")
+VlnPlot(object = MyeloidSinglets, features = violin_genes_myeloid, stack = TRUE)
+```
+
+------------------------------------------------------------------------
+
+# Macrophage
+
+## Pre-processing
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(dplyr)
+library(patchwork)
+library(SeuratObject)
+
+MacroCluster <- subset(x = MyeloidIntegrated, idents = c("Mac 1","Mac 2"))
+
+MacroCluster <- SplitObject(MacroCluster, split.by = "day")
+
+#Using SCTransform on each object
+MacroCluster <- lapply(MacroCluster, SCTransform, vst.flavor = "v2")
+message("SCTransform Finished!")
+
+#Integration
+features <- SelectIntegrationFeatures(MacroCluster, nfeatures = 3000)
+MacroCluster <- PrepSCTIntegration(MacroCluster, anchor.features = features)
+message("Integration prepped, finding anchors now.")
+
+#Anchors
+DonorAnchors <- FindIntegrationAnchors(MacroCluster, normalization.method = "SCT", anchor.features = features)
+#saveRDS(DonorAnchors, "/directory")
+message("Anchors made and saved")
+
+MacroCluster <- IntegrateData(anchorset = DonorAnchors, normalization.method = "SCT")
+message("Integration complete.")
+
+#Run PCA to find PCs
+MacroCluster <- RunPCA(MacroCluster)
+#saveRDS(MacroCluster, "/directory")
+message("Finished running PCA")
+
+#Creating Elbowplot
+ElbowPlot(MacroCluster)
+#ggsave("/directory", plot = EP, width = 8, height = 6)
+message("Elbowplot created and saved")
+
+SaveSeuratRds(MacroCluster)
+saveRDS(MacroCluster, "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Macro_subcluster/Merged_Donors.rds")
+```
+
+```{r}
+library(openxlsx)
+library(openxlsx) 
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(sctransform)
+library(ggplot2)
+message("libs loaded")
+
+# Process the data
+
+MacroCluster <- RunUMAP(MacroCluster, reduction = "pca", dims = 1:11)
+
+MacroCluster <- FindNeighbors(MacroCluster, reduction = "pca", dims = 1:11)
+
+#Resolutions 
+MacroCluster <- FindClusters(MacroCluster, resolution = 0.5)
+MacroCluster <- FindClusters(MacroCluster, resolution = 0.1)
+MacroCluster <- FindClusters(MacroCluster, resolution = 0.2)
+MacroCluster <- FindClusters(MacroCluster, resolution = 0.3)
+MacroCluster <- FindClusters(MacroCluster, resolution = 0.05)
+
+
+# Umaps
+dim_plots <- list(
+  DimPlot_clusters0.5 = DimPlot(MacroCluster, reduction = "umap", group.by = "integrated_snn_res.0.5") + ggtitle("Resolution 0.5"),
+  DimPlot_clusters0.1 = DimPlot(MacroCluster, reduction = "umap", group.by = "integrated_snn_res.0.1") + ggtitle("Resolution 0.1"),
+  DimPlot_clusters0.05 = DimPlot(MacroCluster, reduction = "umap", group.by = "integrated_snn_res.0.05") + ggtitle("Resolution 0.05"),
+  DimPlot_clusters0.2 = DimPlot(MacroCluster, reduction = "umap", group.by = "integrated_snn_res.0.2") + ggtitle("Resolution 0.2"),
+  DimPlot_clusters0.3 = DimPlot(MacroCluster, reduction = "umap", group.by = "integrated_snn_res.0.3") + ggtitle("Resolution 0.3")
+)
+
+message("UMAPs created!")
+
+#Saving the UMAPs
+
+#PDF
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0(plot_name, ".pdf"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+#PNG
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0(plot_name, ".png"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+message("UMAPs saved")
+
+MacroCluster <- PrepSCTFindMarkers(MacroCluster)
+
+#FindAllMarkers
+Markers0.5 <- FindAllMarkers(MacroCluster, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.5")
+write.xlsx(Markers0.5,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Macro_subcluster/MacroMarkers_0.5.xlsx")
+
+Markers0.1 <- FindAllMarkers(MacroCluster, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.1")
+write.xlsx(Markers0.1,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Macro_subcluster/MacroMarkers_0.1.xlsx")
+
+Markers0.05 <- FindAllMarkers(MacroCluster, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.05")
+write.xlsx(Markers0.05,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Macro_subcluster/MacroMarkers_0.05.xlsx")
+message("Find All Markers Finished and Saved")
+
+
+Markers0.3 <- FindAllMarkers(MacroCluster, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.3", only.pos = TRUE)
+write.xlsx(Markers0.3,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Macro_subcluster/MacroMarkers_0.3.xlsx")
+
+
+#Save Object
+saveRDS(MacroCluster,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Macro_subcluster/MacroCluster.rds")
+
+message("obj saved")
+```
+
+## QC Plot
+
+```{r}
+VlnPlot(MacroCluster, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3) 
+```
+
+## Analyzing MacroCluster
+
+### FeaturePlots
+
+Macrophage 1 - IL1B
+
+```{r}
+FeaturePlot(MacroCluster, features = c("IL1B"),  cols = c("lightgrey","#94aa01ff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+Early Macrophage 1 - G0S2
+
+```{r}
+FeaturePlot(MacroCluster, features = c("G0S2"),  cols = c("lightgrey","#00bae3ff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+Macrophage 2 - C1QB
+
+```{r}
+FeaturePlot(MacroCluster, features = c("C1QB"),  cols = c("lightgrey","#f7766dff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+Early Macrophage 2 - HSPA1B
+
+```{r}
+FeaturePlot(MacroCluster, features = c("HSPA1B"),  cols = c("lightgrey","#db71fbff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+### UMAP TIME
+
+```{r}
+Labeled_UMAP.ids <- c("Mac 2","Mac 1","Early Mac 1","Transitioning Mac")
+names(Labeled_UMAP.ids) <- levels(MacroCluster)
+Merged_Donors <- RenameIdents(MacroCluster, Labeled_UMAP.ids)
+DimPlot(Merged_Donors, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+ggsave(filename = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Macro_subcluster/LabeledMacroUMAP.png", height = 4, width = 8)
+```
+
+### DotPlot
+
+```{r}
+library(ggplot2)
+
+markers.to.plot <- c("C1QB", "RNASE1", "CCL13",
+                     "SEMA3C", "IL1B", "CCL20",
+                     "G0S2", "LYZ", "SERPINB9",
+                     "DNAJB1", "JUN", "HSPA1B")
+
+# Extract DotPlot data
+dot_data <- DotPlot(MacroCluster, features = markers.to.plot, dot.scale = 10)$data
+
+# Assign gene colors (for outline)
+gene_outline_colors <- c(rep("#f7766dff", 3),
+                         rep("#94aa01ff", 3),
+                         rep("#00bae3ff", 3),
+                         rep("#db71fbff", 3))
+names(gene_outline_colors) <- markers.to.plot
+
+# Add color column to the data
+dot_data$outline_color <- gene_outline_colors[dot_data$features.plot]
+
+# Plot: fill = avg.exp (gradient), color = gene-based outline
+MacroDot <- ggplot(dot_data, aes(x = id, y = features.plot, size = pct.exp)) +
+  geom_point(aes(fill = avg.exp, color = outline_color), shape = 21, stroke = 1.2) +
+  scale_fill_gradient(low = "white", high = "black") +
+  scale_color_identity() +
+  scale_size(range = c(0, 10)) +
+  theme_minimal() +
+  xlab("Cluster") + ylab("Gene") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(filename = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Macro_subcluster/MacroDotPlot.png", height = 4, width = 8)
+
+MacroDot
+```
+
+###StackedBarplot
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+# Step 1: Extract metadata with identities and timepoints
+meta_df <- MacroCluster@meta.data %>%
+  dplyr::select(cell_type = seurat_clusters, timepoint = day)  # Change to your actual timepoint column
+
+# Step 2: Count cells per cell type and timepoint
+cell_counts <- meta_df %>%
+  group_by(timepoint, cell_type) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n / sum(n) * 100)
+
+# Step 3: Plot
+StackedbarplotMacro = ggplot(cell_counts, aes(x = timepoint, y = percent, fill = cell_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(x = "Timepoint", y = "Percent of Cells", fill = "Cell Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#f7766dff","#94aa01ff","#00bae3ff","#db71fbff"))
+
+ggsave(filename = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Macro_subcluster/MacroStackedBarplot.png", height = 8, width = 4)
+
+StackedbarplotMacro
+```
+
+### UMAP by Day
+
+```{r}
+MacroCluster$day <- ifelse(grepl("Day0", MacroCluster$orig.ident), "D0", "D1")
+
+# Confirm it worked:
+table(MacroCluster$day)
+
+DimPlot(MacroCluster, group.by = "day", label = TRUE) + ggtitle("D0 vs. D1")
+```
+
+------------------------------------------------------------------------
+
+# Fibroblast
+
+## Pre-processing
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(dplyr)
+library(patchwork)
+library(SeuratObject)
+
+#Merged_Donors <- readRDS("/home/gabriel.batzli/jamie_project/Merged_Donors_Object.rds")
+
+#Subsetting from Merged Donors to isolate Myeloid cluster
+FibroCluster <- subset(x = Merged_Donors, idents = c("Fibroblasts"))
+
+FibroCluster <- SplitObject(FibroCluster, split.by = "day")
+
+#Using SCTransform
+FibroCluster <- lapply(FibroCluster, SCTransform, vst.flavor = "v2")
+message("SCTransform Finished!")
+
+#Integration
+features <- SelectIntegrationFeatures(object.list = FibroCluster, nfeatures = 3000)
+FibroCluster <- PrepSCTIntegration(object.list = FibroCluster, anchor.features = features)
+message("Integration prepped, finding anchors now.")
+
+#Anchors
+DonorAnchors <- FindIntegrationAnchors(object.list = FibroCluster, normalization.method = "SCT", anchor.features = features)
+#saveRDS(DonorAnchors, "/home/gabriel.batzli/jamie_project/Myeloid_Anchors.rds")
+message("Anchors made and saved")
+
+FibroCluster <- IntegrateData(anchorset = DonorAnchors, normalization.method = "SCT")
+message("Integration complete.")
+
+
+#Run PCA to find PCs
+FibroCluster <- RunPCA(FibroCluster)
+#saveRDS(FibroCluster, "/home/gabriel.batzli/jamie_project/Myeloid_Cluster_Object.rds")
+message("Finished running PCA")
+
+#Creating Elbowplot
+ElbowPlot(FibroCluster)
+```
+
+```{r}
+install.packages("openxlsx", dependencies = TRUE)
+library(openxlsx)
+library(writexl)
+
+
+# Process the data
+
+FibroCluster <- RunUMAP(FibroCluster, reduction = "pca", dims = 1:11)
+
+FibroCluster <- FindNeighbors(FibroCluster, reduction = "pca", dims = 1:11)
+
+
+#Resolutions 
+FibroCluster <- FindClusters(FibroCluster, resolution = 0.5)
+FibroCluster <- FindClusters(FibroCluster, resolution = 0.3)
+FibroCluster <- FindClusters(FibroCluster, resolution = 0.2)
+FibroCluster <- FindClusters(FibroCluster, resolution = 0.1)
+message("FindClusters complete. Beginning UMAPs")
+
+
+# Umaps
+dim_plots <- list(
+  DimPlot_clusters0.5 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.5") + ggtitle("Resolution 0.5"),
+  DimPlot_clusters0.1 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.1") + ggtitle("Resolution 0.1"),
+  DimPlot_clusters0.05 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.05") + ggtitle("Resolution 0.05"),
+  DimPlot_clusters0.3 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.3") + ggtitle("Resolution 0.3"),
+  DimPlot_clusters0.2 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.2") + ggtitle("Resolution 0.2")
+)
+
+```
+
+## Analyzing Fibroblast
+
+### FindAllMarkers
+
+```{r}
+FibroCluster <- PrepSCTFindMarkers(FibroCluster)
+FibroMarkers0.5 <- FindAllMarkers(FibroCluster, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.5")
+write_xlsx(FibroMarkers0.5,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Fibroblasts_Subcluster/FibroMarkers_0.5.xlsx",col_names = TRUE,format_headers = TRUE)
+
+FibroMarkers0.5
+```
+
+### FeaturePlots
+
+FB-II (C3, CCL19)
+
+```{r}
+FeaturePlot(FibroCluster, features = "C3", cols = c("lightgrey", "#f7766dff"))
+```
+
+FB-II (APOD, ITM2A)
+
+```{r}
+FeaturePlot(FibroCluster, features = "APOD", cols = c("lightgrey","#d49200ff"))
+```
+
+Reticular (FBLN1)
+
+```{r}
+FeaturePlot(FibroCluster, features = "FBLN1", cols = c("lightgrey","#94aa01ff"))
+```
+
+FB-III (COL2341, LEPR)
+
+```{r}
+FeaturePlot(FibroCluster, features = "LEPR", cols = c("lightgrey","#03bb38ff"))
+```
+
+FB-III (LEPR, WIf1)
+
+```{r}
+FeaturePlot(FibroCluster, features = "WIF1", cols = c("lightgrey","#db71fbff"))
+```
+
+FB-I (COMP+)
+
+```{r}
+FeaturePlot(FibroCluster, features = "COMP", cols = c("lightgrey","#00bae3ff"))
+```
+
+FB-I (COL11A1+)
+
+```{r}
+FeaturePlot(FibroCluster, features = "COL11A1", cols = c("lightgrey","#629dffff"))
+```
+
+###UMAP
+
+```{r}
+#Filtering Out Singlets
+FibroSinglets = subset(FibroCluster, idents = c("0","1","2","3","4","5","6"))
+
+RunUMAP(FibroSinglets, dims = 1:15, reduction = "pca") 
+DimPlot(FibroSinglets, reduction = "umap")#Creates UMAP with 1:15 PCs. 
+ggsave(filename = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Fibroblasts_Subcluster/UMAP.Fibro.png", height = 8, width = 4)
+```
+
+### Violin Plot
+
+```{r}
+violin_genes = c("CCL19","APOD","FBLN1","LEPR","COMP","COL11A1","WIf1")
+VlnPlot(object = FibroSinglets, features = violin_genes, stack = TRUE)
+```
+
+### Stacked Barplot
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+# Step 1: Extract metadata with identities and timepoints
+meta_df <- FibroSinglets@meta.data %>%
+  dplyr::select(cell_type = seurat_clusters, timepoint = day)  # Change to your actual timepoint column
+
+# Step 2: Count cells per cell type and timepoint
+cell_counts <- meta_df %>%
+  group_by(timepoint, cell_type) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n / sum(n) * 100)
+
+# Step 3: Plot
+StackedbarplotFibro = ggplot(cell_counts, aes(x = timepoint, y = percent, fill = cell_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(x = "Timepoint", y = "Percent of Cells", fill = "Cell Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#f7766dff","#d49200ff","#94aa01ff","#03bb38ff","#00bae3ff","#629dffff","#db71fbff"))
+
+ggsave(filename = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Fibroblasts_Subcluster/FibroStackedBarplot.png", height = 8, width = 4)
+
+StackedbarplotFibro
+```
+
+# Macro/Mono
+
+## Pre-processing
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(dplyr)
+library(patchwork)
+library(SeuratObject)
+
+MacroMono <- subset(x = MyeloidSinglets, idents = c("Mac 1","Mac 2", "Monocytes"))
+
+MacroMono <- SplitObject(MacroMono, split.by = "day")
+
+#Using SCTransform on each object
+MacroMono <- lapply(MacroMono, SCTransform, vst.flavor = "v2")
+message("SCTransform Finished!")
+
+#Integration
+features <- SelectIntegrationFeatures(MacroMono, nfeatures = 3000)
+MacroMono <- PrepSCTIntegration(MacroMono, anchor.features = features)
+message("Integration prepped, finding anchors now.")
+
+#Anchors
+DonorAnchors <- FindIntegrationAnchors(MacroMono, normalization.method = "SCT", anchor.features = features)
+#saveRDS(DonorAnchors, "/directory")
+message("Anchors made and saved")
+
+MacroMono <- IntegrateData(anchorset = DonorAnchors, normalization.method = "SCT")
+message("Integration complete.")
+
+#Run PCA to find PCs
+MacroMono <- RunPCA(MacroMono)
+#saveRDS(MacroMono, "/directory")
+message("Finished running PCA")
+
+#Creating Elbowplot
+ElbowPlot(MacroMono)
+#ggsave("/directory", plot = EP, width = 8, height = 6)
+message("Elbowplot created and saved")
+
+SaveSeuratRds(MacroMono)
+```
+
+```{r}
+library(openxlsx)
+library(openxlsx) 
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(sctransform)
+library(ggplot2)
+message("libs loaded")
+
+# Process the data
+
+MacroMono <- RunUMAP(MacroMono, reduction = "pca", dims = 1:9)
+
+MacroMono <- FindNeighbors(MacroMono, reduction = "pca", dims = 1:9)
+
+#Resolutions 
+MacroMono <- FindClusters(MacroMono, resolution = 0.5)
+MacroMono <- FindClusters(MacroMono, resolution = 0.1)
+MacroMono <- FindClusters(MacroMono, resolution = 0.2)
+MacroMono <- FindClusters(MacroMono, resolution = 0.35)
+MacroMono <- FindClusters(MacroMono, resolution = 0.05)
+
+
+
+
+
+DimPlot_clusters0.5 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.5") + ggtitle("Resolution 0.5")
+DimPlot_clusters0.1 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.1") + ggtitle("Resolution 0.1")
+DimPlot_clusters0.05 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.05") + ggtitle("Resolution 0.05")
+DimPlot_clusters0.2 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.2") + ggtitle("Resolution 0.2")
+DimPlot_clusters0.35 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.35") + ggtitle("Resolution 0.35")
+DimPlot_clusters0.4 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.4") + ggtitle("Resolution 0.4")
+
+DimPlot_clusters0.3
+DimPlot_clusters0.5
+DimPlot_clusters0.1
+DimPlot_clusters0.05
+DimPlot_clusters0.2
+DimPlot_clusters0.4
+DimPlot_clusters0.35
+message("UMAPs created!")
+
+#Saving the UMAPs
+
+#PDF
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0(plot_name, ".pdf"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+#PNG
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0(plot_name, ".png"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+message("UMAPs saved")
+
+####IMPORTANT!! JAMIE DO NOT FORGET####
+MacroMono <- PrepSCTFindMarkers(MacroMono)
+
+#FindAllMarkers
+Markers0.5 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.5", only.pos = TRUE)
+write.xlsx(Markers0.5,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/MacroMono_Subcluster/Markers_0.5MacroMono.xlsx")
+
+Markers0.1 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.1")
+write.xlsx(Markers0.1,"/home/gabriel.batzli/jamie_project/Markers_0.1.xlsx")
+
+Markers0.05 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.05")
+write.xlsx(Markers0.05,"/home/gabriel.batzli/jamie_project/Markers_0.05.xlsx")
+message("Find All Markers Finished and Saved")
+
+
+Markers0.35 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.35", only.pos = TRUE)
+write.xlsx(Markers0.35,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/MacroMono_Subcluster/Markers_0.35MacroMono.xlsx")
+
+
+Markers0.3 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.3", only.pos = TRUE)
+write.xlsx(Markers0.3,"MacroMarkers_0.3.xlsx")
+
+
+#Save Object
+saveRDS(MacroMono,"MacroMono.rds")
+
+message("obj saved")
+```
+
+##FeaturePlots
+
+```{r}
+FeaturePlot(MacroMono, features = "ISG15", min.cutoff = 0)
+```
+
+```{r}
+FeaturePlot(MacroMono, features = "ISG20", min.cutoff = 0)
+```
+
+```{r}
+FeaturePlot(MacroMono, features = "PLAC8")
+```
+
+```{r}
+FeaturePlot(MacroMono, features = "S100A8")
+```
+
+```{r}
+FeaturePlot(MacroMono, features = "S100A9")
+```
+
+## StackedBarplot
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+#Extract metadata with identities and timepoints
+meta_df <- MacroMono@meta.data %>%
+  dplyr::select(cell_type = seurat_clusters, timepoint = day)  # Change to your actual timepoint column
+
+#Count cells per cell type and timepoint
+cell_counts <- meta_df %>%
+  group_by(timepoint, cell_type) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n / sum(n) * 100)
+
+# Stacked BarPlot
+StackedbarplotMacMono = ggplot(cell_counts, aes(x = timepoint, y = percent, fill = cell_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(x = "Timepoint", y = "Percent of Cells", fill = "Cell Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#f7766dff","#d49200ff","#03bb38ff","#00bae3ff","#629dffff","#db71fbff"))
+```
+
+## UMAP
+
+```{r}
+Labeled_UMAP.ids <- c("C1Q Hi","M1-like","VEGFA Hi","Monocytes","M2-like","Early M2-like")
+names(Labeled_UMAP.ids) <- levels(MacroMono)
+MacroMono <- RenameIdents(MacroMono, Labeled_UMAP.ids)
+DimPlot(MacroMono, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+ggsave(filename = "LabeledUMAP.png", height = 4, width = 8)
+```

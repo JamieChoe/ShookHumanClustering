@@ -1,0 +1,134 @@
+---
+title: "SCTransformMergedDonors"
+output: html_document
+date: "2025-07-01"
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(tidyverse)
+library(dplyr)
+library(patchwork)
+library(SeuratObject)
+
+install.packages("scCustomize")
+library(scCustomize)
+```
+
+
+
+```{r}
+Merged_Donors <- readRDS("jamie_project/Merged_Donors_Object_2.rds")
+```
+
+
+#FeaturePlots
+```{r}
+FeaturePlot(Merged_Donors, features = c("KRT1"), cols = c("lightgrey", "#f7766dff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "KRT14", cols = c("lightgrey","#d49200ff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "COL1A1", cols = c("lightgrey","#94aa01ff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "LYZ", cols = c("lightgrey","#03bb38ff"),min.cutoff = 0, max.cutoff = 4)
+
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "CD3D", cols = c("lightgrey","#03c19fff"),min.cutoff = 0, max.cutoff = 4)
+
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "TPSAB1", cols = c("lightgrey","#00bae3ff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "PECAM1", cols = c("lightgrey","#629dffff"),min.cutoff = 0, max.cutoff = 4)
+
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "ACTA2", cols = c("lightgrey","#db71fbff"),min.cutoff = 0, max.cutoff = 4)
+
+```
+
+```{r}
+FeaturePlot(Merged_Donors, features = "TYRP1", cols = c("lightgrey","#ff61c3ff"),min.cutoff = 0, max.cutoff = 4)
+
+```
+
+TYRP1
+
+#Creating FeaturePlots
+```{r}
+FeaturePlot(Merged_Donors, features = c("KRT1", "KRT14", "COL1A1","LYZ","CD3D","TPSAB1","PECAM1","ACTA2","TYRP1"))
+```
+
+#Create Labeled UMAP
+```{r}
+Labeled_UMAP.ids <- c("Keratinocyte 1","Keratinocyte 2","Fibroblasts","Myeloid","Lymphoid","Mast","Endothelial","Pericytes","Melanocytes")
+names(Labeled_UMAP.ids) <- levels(Merged_Donors)
+Merged_Donors <- RenameIdents(Merged_Donors, Labeled_UMAP.ids)
+DimPlot(Merged_Donors, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+ggsave(filename = "LabeledUMAP.png", height = 4, width = 8)
+
+Merged_Donors$MainCells = Idents(Merged_Donors)
+```
+
+```{r}
+Merged_Donors$day <- ifelse(grepl("Day0", Merged_Donors$orig.ident), "D0", "D1")
+
+# Confirm it worked:
+table(Merged_Donors$day)
+
+DimPlot(Merged_Donors, group.by = "day", label = TRUE) + ggtitle("D0 vs. D1")
+```
+
+
+```{r}
+violin_genes = c("KRT1", "ITGA6","MMP2","LYZ","CD3D","TPSAB1","PECAM1","MYH11","TYR")
+VlnPlot(object = Merged_Donors, features = violin_genes, stack = TRUE)
+```
+
+```{r}
+ncol(Merged_Donors)
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,316 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-07-10"
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(tidyverse)
+library(dplyr)
+library(patchwork)
+library(SeuratObject)
+
+MacroMono <- subset(x = MyeloidSinglets, idents = c("Mac 1","Mac 2", "Monocytes"))
+
+MacroMono <- SplitObject(MacroMono, split.by = "day")
+
+#Using SCTransform on each object
+MacroMono <- lapply(MacroMono, SCTransform, vst.flavor = "v2")
+message("SCTransform Finished!")
+
+#Integration
+features <- SelectIntegrationFeatures(MacroMono, nfeatures = 3000)
+MacroMono <- PrepSCTIntegration(MacroMono, anchor.features = features)
+message("Integration prepped, finding anchors now.")
+
+#Anchors
+DonorAnchors <- FindIntegrationAnchors(MacroMono, normalization.method = "SCT", anchor.features = features)
+#saveRDS(DonorAnchors, "/directory")
+message("Anchors made and saved")
+
+MacroMono <- IntegrateData(anchorset = DonorAnchors, normalization.method = "SCT")
+message("Integration complete.")
+
+#Run PCA to find PCs
+MacroMono <- RunPCA(MacroMono)
+#saveRDS(MacroMono, "/directory")
+message("Finished running PCA")
+
+#Creating Elbowplot
+ElbowPlot(MacroMono)
+#ggsave("/directory", plot = EP, width = 8, height = 6)
+message("Elbowplot created and saved")
+
+SaveSeuratRds(MacroMono)
+```
+
+
+```{r}
+library(openxlsx)
+library(openxlsx) 
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(sctransform)
+library(ggplot2)
+message("libs loaded")
+
+# Process the data
+
+MacroMono <- RunUMAP(MacroMono, reduction = "pca", dims = 1:9)
+
+MacroMono <- FindNeighbors(MacroMono, reduction = "pca", dims = 1:9)
+
+#Resolutions 
+MacroMono <- FindClusters(MacroMono, resolution = 0.5)
+MacroMono <- FindClusters(MacroMono, resolution = 0.1)
+MacroMono <- FindClusters(MacroMono, resolution = 0.2)
+MacroMono <- FindClusters(MacroMono, resolution = 0.35)
+MacroMono <- FindClusters(MacroMono, resolution = 0.05)
+
+
+
+
+
+DimPlot_clusters0.5 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.5") + ggtitle("Resolution 0.5")
+DimPlot_clusters0.1 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.1") + ggtitle("Resolution 0.1")
+DimPlot_clusters0.05 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.05") + ggtitle("Resolution 0.05")
+DimPlot_clusters0.2 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.2") + ggtitle("Resolution 0.2")
+DimPlot_clusters0.35 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.35") + ggtitle("Resolution 0.35")
+DimPlot_clusters0.4 = DimPlot(MacroMono, reduction = "umap", group.by = "integrated_snn_res.0.4") + ggtitle("Resolution 0.4")
+
+DimPlot_clusters0.3
+DimPlot_clusters0.5
+DimPlot_clusters0.1
+DimPlot_clusters0.05
+DimPlot_clusters0.2
+DimPlot_clusters0.4
+DimPlot_clusters0.35
+message("UMAPs created!")
+
+#Saving the UMAPs
+
+#PDF
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0(plot_name, ".pdf"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+#PNG
+for (plot_name in names(dim_plots)) {
+  ggsave(paste0(plot_name, ".png"), 
+         plot = dim_plots[[plot_name]], 
+         width = 8, height = 6)}
+
+message("UMAPs saved")
+
+####IMPORTANT DO NOT FORGET####
+MacroMono <- PrepSCTFindMarkers(MacroMono)
+
+#FindAllMarkers
+Markers0.5 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.5", only.pos = TRUE)
+write.xlsx(Markers0.5,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/MacroMono_Subcluster/Markers_0.5MacroMono.xlsx")
+
+Markers0.1 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.1")
+write.xlsx(Markers0.1,"/home/gabriel.batzli/jamie_project/Markers_0.1.xlsx")
+
+Markers0.05 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.05")
+write.xlsx(Markers0.05,"/home/gabriel.batzli/jamie_project/Markers_0.05.xlsx")
+message("Find All Markers Finished and Saved")
+
+
+Markers0.35 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.35", only.pos = TRUE)
+write.xlsx(Markers0.35,"/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/MacroMono_Subcluster/Markers_0.35MacroMono.xlsx")
+
+
+Markers0.3 <- FindAllMarkers(MacroMono, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.3", only.pos = TRUE)
+write.xlsx(Markers0.3,"MacroMarkers_0.3.xlsx")
+
+
+#Save Object
+saveRDS(MacroMono,"MacroMono.rds")
+
+message("obj saved")
+```
+
+#FeaturePlots
+```{r}
+FeaturePlot(MacroMono, features = "ISG15", min.cutoff = 0)
+```
+
+```{r}
+FeaturePlot(MacroMono, features = "ISG20", min.cutoff = 0)
+```
+
+```{r}
+FeaturePlot(MacroMono, features = "PLAC8")
+```
+
+
+```{r}
+FeaturePlot(MacroMono, features = "S100A8")
+```
+
+```{r}
+FeaturePlot(MacroMono, features = "S100A9")
+```
+
+
+```{r}
+FeaturePlot(MacroMono, features = c("VEGFA"),  cols = c("lightgrey","#94aa01ff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r}
+FeaturePlot(MacroMono, features = c("G0S2"),  cols = c("lightgrey","#00bae3ff"),min.cutoff = 0, max.cutoff = 4)
+
+```
+
+```{r}
+FeaturePlot(MacroMono, features = c("HSPA1B"),  cols = c("lightgrey","#db71fbff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+
+```{r}
+FeaturePlot(MacroMono, features = c("C1QB"),  cols = c("lightgrey","#f7766dff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+# Step 1: Extract metadata with identities and timepoints
+meta_df <- MacroMono@meta.data %>%
+  dplyr::select(cell_type = seurat_clusters, timepoint = day)  # Change to your actual timepoint column
+
+# Step 2: Count cells per cell type and timepoint
+cell_counts <- meta_df %>%
+  group_by(timepoint, cell_type) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n / sum(n) * 100)
+
+# Step 3: Plot
+StackedbarplotMacMono = ggplot(cell_counts, aes(x = timepoint, y = percent, fill = cell_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(x = "Timepoint", y = "Percent of Cells", fill = "Cell Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#f7766dff","#d49200ff","#03bb38ff","#00bae3ff","#629dffff","#db71fbff"))
+```
+
+
+#Creating Labeled UMAP
+```{r}
+Labeled_UMAP.ids <- c("C1Q Hi","M1-like","VEGFA Hi","Monocytes","M2-like","Early M2-like")
+names(Labeled_UMAP.ids) <- levels(MacroMono)
+MacroMono <- RenameIdents(MacroMono, Labeled_UMAP.ids)
+DimPlot(MacroMono, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+ggsave(filename = "LabeledUMAP.png", height = 4, width = 8)
+```
+
+
+```{r}
+library(ggplot2)
+
+markers.to.plot <- c("C1QB", "C1QA", "C1QC",
+                     "SEMA3C", "IL1B", "CCL20",
+                     "IL1R2","HLA-DRA","CD74",
+                     "FCN1","LYZ","G0S2",
+                     "CCL18", "CCL13", "CD209",
+                     "DNAJB1", "JUN", "HSPA1B")
+
+# Extract DotPlot data
+dot_data <- DotPlot(MacroMono, features = markers.to.plot, dot.scale = 10)$data
+
+# Assign gene colors (for outline)
+gene_outline_colors <- c(rep("#f7766dff", 3),
+                         rep("#d49200ff", 3),
+                         rep("#03bb38ff", 3),
+                         rep("#00bae3ff", 3),
+                         rep("#629dffff", 3),
+                         rep("#db71fbff", 3))
+names(gene_outline_colors) <- markers.to.plot
+
+# Add color column to the data
+dot_data$outline_color <- gene_outline_colors[dot_data$features.plot]
+
+# Plot: fill = avg.exp (gradient), color = gene-based outline
+MacroMonoDot <- ggplot(dot_data, aes(x = id, y = features.plot, size = pct.exp)) +
+  geom_point(aes(fill = avg.exp, color = outline_color), shape = 21, stroke = 1.2) +
+  scale_fill_gradient(low = "white", high = "black") +
+  scale_color_identity() +
+  scale_size(range = c(0, 10)) +
+  theme_minimal() +
+  xlab("Cluster") + ylab("Gene") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+MacroMonoDot
+```
+
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+# Step 1: Extract metadata with identities and timepoints
+meta_df <- MacroMono@meta.data %>%
+  dplyr::select(cell_type = seurat_clusters, timepoint = day)  # Change to your actual timepoint column
+
+# Step 2: Count cells per cell type and timepoint
+cell_counts <- meta_df %>%
+  group_by(timepoint, cell_type) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n / sum(n) * 100)
+
+# Step 3: Plot
+StackedbarplotMacro = ggplot(cell_counts, aes(x = timepoint, y = percent, fill = cell_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(x = "Timepoint", y = "Percent of Cells", fill = "Cell Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#f7766dff","#d49200ff","#03bb38ff","#00bae3ff","#629dffff","#db71fbff"))
+```
+
+
+```{r}
+MacroMono$day <- ifelse(grepl("Day0", MacroMono$orig.ident), "D0", "D1")
+
+# Confirm it worked:
+table(MacroMono$day)
+
+DimPlot(MacroMono, group.by = "day", label = TRUE) + ggtitle("D0 vs. D1")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

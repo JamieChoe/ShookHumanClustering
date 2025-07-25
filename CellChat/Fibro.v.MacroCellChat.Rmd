@@ -1,0 +1,413 @@
+---
+title: "MergedSeurat+CellChat"
+output: html_document
+date: "2025-07-22"
+---
+
+```{r}
+library(seurat)
+library(CellChat)
+```
+
+#Preparing Seurat Objects
+
+##Splitting Fibroblasts and MacroMono by day
+```{r setup, include=FALSE}
+#Fibroblasts
+FibroDay0 = subset(FibroSinglets, subset = day == "D0")
+FibroDay1 = subset(FibroSinglets, subset = day == "D1")
+
+#MacroMono
+MacroMonoD0 = subset(MacroMono, subset = day == "D0")
+MacroMonoD1 = subset(MacroMono, subset = day == "D1")
+
+```
+
+##Setting Idents to metadata
+```{r}
+#Adds Idents to CellType metadata
+FibroDay0$CellType <- Idents(FibroDay0)
+FibroDay1$CellType <- Idents(FibroDay1)
+
+MacroMonoD0$CellType <- Idents(MacroMonoD0)
+MacroMonoD1$CellType <- Idents(MacroMonoD1)
+```
+
+##Merging together Fibro and Macro into one seurat object
+```{r}
+#Day 0 
+FibroMacroD0 <- merge(
+  x = FibroDay0,
+  y = MacroMonoD0,
+  add.cell.ids = c("Fibro","Macro"),
+  project = "PatientMerge") 
+
+#Day 1
+FibroMacroD1 <- merge(
+  x = FibroDay1,
+  y = MacroMonoD1,
+  add.cell.ids = c("Fibro","Macro"),
+  project = "PatientMerge") 
+```
+
+#D0 cellchat object
+```{r}
+data.input <- FibroMacroD0[["SCT"]]@data # normalized data matrix
+labels <- Idents(FibroMacroD0)
+# create a dataframe of the cell labels
+meta <- data.frame(labels = labels, row.names = names(labels)) 
+```
+
+
+```{r}
+#Creating CellChat Object
+FibroMacroChatD0 <- createCellChat(object = FibroMacroD0, group.by = "ident", assay = "SCT")
+```
+```{r}
+FibroMacroChatD0 <- addMeta(FibroMacroChatD0, meta = meta)
+#set "labels" as default cell identity
+FibroMacroChatD0 <- setIdent(FibroMacroChatD0, ident.use = "labels") 
+
+#show factor levels of the cell labels
+levels(FibroMacroChatD0@idents) 
+
+#number of cells in each cell group
+groupSize <- as.numeric(table(FibroMacroChatD0@idents)) 
+```
+
+```{r}
+CellChatDB <- CellChatDB.human # Uses CellChatDB from human 
+showDatabaseCategory(CellChatDB)
+
+# use a subset of CellChatDB for cell-cell communication analysis
+CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling", key = "annotation") # use Secreted Signaling
+
+# set the used database in the object
+FibroMacroChatD0@DB <- CellChatDB.use
+```
+
+```{r}
+# subset the expression data of signaling genes for saving computation cost
+FibroMacroChatD0 <- subsetData(FibroMacroChatD0) 
+future::plan("multisession", workers = 4) # do parallel processing
+FibroMacroChatD0 <- identifyOverExpressedGenes(FibroMacroChatD0)
+FibroMacroChatD0 <- identifyOverExpressedInteractions(FibroMacroChatD0)
+
+ptm = Sys.time()
+execution.time = Sys.time() - ptm
+print(as.numeric(execution.time, units = "secs"))
+```
+
+```{r}
+ptm = Sys.time()
+FibroMacroChatD0 <- computeCommunProb(FibroMacroChatD0, type = "triMean")
+```
+
+```{r}
+#Filters out communications between less than 10 cells
+FibroMacroChatD0 <- filterCommunication(FibroMacroChatD0, min.cells = 10) #not sure if this is necessary
+
+#computes the communication probability on signaling pathway level
+FibroMacroChatD0 <- computeCommunProbPathway(FibroMacroChatD0)
+
+#Calculate the aggregated cell-cell communication network
+FibroMacroChatD0 <- aggregateNet(FibroMacroChatD0)
+execution.time = Sys.time() - ptm
+print(as.numeric(execution.time, units = "secs"))
+
+#Saving the object
+saveRDS(FibroMacroChatD0, file = "FibroMacroChatD0.rds")
+```
+
+```{r}
+ptm = Sys.time()
+groupSize <- as.numeric(table(FibroMacroChatD0@idents))
+par(mfrow = c(1,2), xpd=TRUE)
+netVisual_circle(FibroMacroChatD0@net$count, vertex.weight = groupSize, weight.scale = T, label.edge= F, title.name = "Number of interactions")
+netVisual_circle(FibroMacroChatD0@net$weight, vertex.weight = groupSize, weight.scale = T, label.edge= F, title.name = "Interaction weights/strength")
+```
+
+```{r}
+mat <- FibroMacroChatD0@net$weight
+
+par(mfrow = c(3,4), xpd=TRUE)
+
+suppressWarnings(for (i in 1:nrow(mat)) {
+  mat2 <- matrix(0, nrow = nrow(mat), ncol = ncol(mat), dimnames = dimnames(mat))
+  mat2[i, ] <- mat[i, ]
+  netVisual_circle(mat2, vertex.weight = groupSize, weight.scale = T, edge.weight.max = max(mat), title.name = rownames(mat)[i])
+})
+```
+
+```{r}
+#Shows the available pathways 
+FibroMacroChatD0@netP$pathways
+```
+
+##Heatmap
+```{r}
+#Sets which pathway to show
+pathways.show <- c("CXCL") 
+
+# Heatmap
+par(mfrow=c(1,1))
+netVisual_heatmap(FibroMacroChatD0, signaling = pathways.show, color.heatmap = "Reds")
+
+```
+
+
+
+
+
+
+
+
+#D1 Cellchat Object
+
+```{r}
+data.input <- FibroMacroD1[["SCT"]]@data # normalized data matrix
+labels <- Idents(FibroMacroD1)
+meta <- data.frame(labels = labels, row.names = names(labels)) # create a dataframe of the cell labels
+```
+
+
+```{r}
+FibroMacroChatD1 <- createCellChat(object = FibroMacroD1, group.by = "ident", assay = "SCT")
+```
+```{r}
+FibroMacroChatD1 <- addMeta(FibroMacroChatD1, meta = meta)
+FibroMacroChatD1 <- setIdent(FibroMacroChatD1, ident.use = "labels") # set "labels" as default cell identity
+levels(FibroMacroChatD1@idents) # show factor levels of the cell labels
+groupSize <- as.numeric(table(FibroMacroChatD1@idents)) # number of cells in each cell group
+```
+
+```{r}
+CellChatDB <- CellChatDB.human 
+showDatabaseCategory(CellChatDB)
+
+# use a subset of CellChatDB for cell-cell communication analysis
+CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling", key = "annotation") # use Secreted Signaling
+
+# set the used database in the object
+FibroMacroChatD1@DB <- CellChatDB.use
+```
+
+```{r}
+# subset the expression data of signaling genes for saving computation cost
+FibroMacroChatD1 <- subsetData(FibroMacroChatD1) # This step is necessary even if using the whole database
+future::plan("multisession", workers = 4) # do parallel
+FibroMacroChatD1 <- identifyOverExpressedGenes(FibroMacroChatD1)
+FibroMacroChatD1 <- identifyOverExpressedInteractions(FibroMacroChatD1)
+
+ptm = Sys.time()
+execution.time = Sys.time() - ptm
+print(as.numeric(execution.time, units = "secs"))
+```
+
+```{r}
+ptm = Sys.time()
+FibroMacroChatD1 <- computeCommunProb(FibroMacroChatD1, type = "triMean")
+```
+
+```{r}
+#Filters out communications between less than 10 cells
+FibroMacroChatD1 <- filterCommunication(FibroMacroChatD1, min.cells = 10)
+
+#computes the communication probability on signaling pathway level
+FibroMacroChatD1 <- computeCommunProbPathway(FibroMacroChatD1)
+
+#Calculate the aggregated cell-cell communication network
+FibroMacroChatD1 <- aggregateNet(FibroMacroChatD1)
+execution.time = Sys.time() - ptm
+print(as.numeric(execution.time, units = "secs"))
+
+#Saving the object
+saveRDS(FibroMacroChatD1, file = "FibroMacroChatD1.rds")
+```
+
+
+```{r}
+#Show available pathways
+FibroMacroChatD1@netP$pathways
+```
+
+##Heatmap
+```{r}
+#Sets which pathway to show
+pathways.show <- c("VEGF") 
+
+# Heatmap side by side between D0 and D1
+par(mfrow=c(1,1))
+netVisual_heatmap(FibroMacroChatD1, signaling = pathways.show, color.heatmap = "Reds") + 
+  netVisual_heatmap(FibroMacroChatD0, signaling = pathways.show, color.heatmap = "Reds")
+```
+
+
+
+
+
+
+
+
+
+--------------------------------------------------------------------------------
+
+
+
+#Merging CellChat D0 and D1 Objects
+```{r}
+#Computing centrality before merging!
+netAnalysis_computeCentrality(FibroMacroChatD0)
+FibroMacroChatD0 <- netAnalysis_computeCentrality(FibroMacroChatD0)
+
+netAnalysis_computeCentrality(FibroMacroChatD1)
+FibroMacroChatD1 <- netAnalysis_computeCentrality(FibroMacroChatD1)
+
+
+object.list <- list(D0 = FibroMacroChatD0, D1 = FibroMacroChatD1)
+FibroMacroChat <- mergeCellChat(object.list, add.names = names(object.list))
+
+
+FibroMacroChat
+```
+
+```{r}
+saveRDS(FibroMacroChat, file = "FibroMacroChat.rds")
+```
+
+##Compare the total number of interactions and interaction strength
+```{r}
+ptm = Sys.time()
+gg1 <- compareInteractions(FibroMacroChat, show.legend = F, group = c(1,2))
+gg2 <- compareInteractions(FibroMacroChat, show.legend = F, group = c(1,2), measure = "weight")
+gg1 + gg2
+```
+
+```{r}
+par(mfrow = c(1,2), xpd=TRUE)
+netVisual_diffInteraction(FibroMacroChat, weight.scale = T)
+netVisual_diffInteraction(FibroMacroChat, weight.scale = T, measure = "weight")
+```
+
+
+
+```{r}
+# Chord diagram
+pathways.show <- c("CXCL") 
+par(mfrow = c(1,2), xpd=TRUE)
+for (i in 1:length(object.list)) {
+  netVisual_aggregate(object.list[[i]], signaling = pathways.show, layout = "chord", signaling.name = paste(pathways.show, names(object.list)[i]))
+}
+```
+
+```{r}
+weight.max <- getMaxWeight(object.list, attribute = c("idents","count"))
+par(mfrow = c(1,2), xpd=TRUE)
+suppressWarnings(for (i in 1:length(object.list)) {
+  netVisual_circle(object.list[[i]]@net$count, weight.scale = T, label.edge= F, edge.weight.max = weight.max[2], edge.width.max = 12, title.name = paste0("Number of interactions - ", names(object.list)[i]))
+})
+```
+
+
+
+
+```{r}
+gg1 <- netAnalysis_signalingChanges_scatter(FibroMacroChat, idents.use = "Hypodermal", signaling.exclude = "Fascial")
+#> Visualizing differential outgoing and incoming signaling changes from NL to LS
+#> The following `from` values were not present in `x`: 0
+#> The following `from` values were not present in `x`: 0, -1
+gg2 <- netAnalysis_signalingChanges_scatter(FibroMacroChat, idents.use = "Hypodermal", signaling.exclude = c("Fascial"))
+#> Visualizing differential outgoing and incoming signaling changes from NL to LS
+#> The following `from` values were not present in `x`: 0, 2
+#> The following `from` values were not present in `x`: 0, -1
+patchwork::wrap_plots(plots = list(gg1,gg2))
+```
+
+##Outgoing Heatmaps
+```{r}
+library(ComplexHeatmap)
+
+i = 1
+# combining all the identified signaling pathways from different datasets 
+pathway.union <- union(object.list[[i]]@netP$pathways, object.list[[i+1]]@netP$pathways)
+ht1 = netAnalysis_signalingRole_heatmap(object.list[[i]], pattern = "outgoing", signaling = pathway.union, title = names(object.list)[i], width = 5, height =10, font.size = 5 )
+ht2 = netAnalysis_signalingRole_heatmap(object.list[[i]], pattern = "incoming", signaling = pathway.union, title = names(object.list)[i], width = 5, height = 6)
+
+draw(ht1 + ht2, ht_gap = unit(0.5, "cm"))
+
+ht1
+
+ht2
+```
+
+#Pathway interactions 
+
+##CXCL
+
+###CirclePlot
+```{r}
+pathways.show <- c("CXCL") 
+weight.max <- getMaxWeight(object.list, slot.name = c("netP"), attribute = pathways.show) # control the edge weights across different datasets
+par(mfrow = c(1,2), xpd=TRUE)
+suppressWarnings(for (i in 1:length(object.list)) {
+  netVisual_aggregate(object.list[[i]], signaling = pathways.show, layout = "circle", edge.weight.max = weight.max[1], edge.width.max = 10, signaling.name = paste(pathways.show, names(object.list)[i]))
+})
+```
+
+###Heatmap
+```{r}
+pathways.show <- c("CXCL") 
+par(mfrow = c(1,2), xpd=TRUE)
+ht <- list()
+for (i in 1:length(object.list)) {
+  ht[[i]] <- netVisual_heatmap(object.list[[i]], signaling = pathways.show, color.heatmap = "Reds",title.name = paste(pathways.show, "signaling ",names(object.list)[i]))
+}
+#> Do heatmap based on a single object 
+#> 
+#> Do heatmap based on a single object
+ComplexHeatmap::draw(ht[[1]] + ht[[2]], ht_gap = unit(0.5, "cm"))
+```
+
+
+```{r}
+par(mfrow = c(1, 2), xpd = TRUE)
+for (i in 1:length(object.list)) {
+  netVisual_chord_gene(
+    object.list[[i]],
+    sources.use = "Papillary",
+    targets.use = c("C1Q Hi", "M1-like", "VEGFA Hi", "Monocytes", "M2-like", "Early M2-like"),
+    slot.name = "netP",
+    title.name = paste0("Papillary → Macro/Monocytes - ", names(object.list)[i]),
+    legend.pos.x = 10
+  )
+}
+
+png("Papillary_to_MacroMonocytes.png", width = 2000, height = 1000, res = 300)
+
+
+```
+
+
+```{r}
+netVisual_chord_gene(
+  object.list[["D0"]],
+  sources.use = "Papillary",
+  targets.use = c("C1Q Hi", "M1-like", "VEGFA Hi", "Monocytes", "M2-like", "Early M2-like"),
+  slot.name = "netP",
+  title.name = "Papillary → Macro/Monocytes (Day 0)",
+  legend.pos.x = 10
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

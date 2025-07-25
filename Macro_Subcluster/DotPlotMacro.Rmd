@@ -1,0 +1,191 @@
+---
+title: "MacroFeature"
+output: html_document
+date: "2025-07-01"
+---
+
+```{r}
+Labeled_UMAP.ids <- c("Mac 2","Mac 1","Early Mac 1","Transitioning Mac")
+names(Labeled_UMAP.ids) <- levels(MacroCluster)
+Merged_Donors <- RenameIdents(MacroCluster, Labeled_UMAP.ids)
+DimPlot(Merged_Donors, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+ggsave(filename = "LabeledUMAP.png", height = 4, width = 8)
+```
+
+
+```{r setup, include=FALSE}
+markers.to.plot <- c("C1QB","RNASE1","CCL13","SEMA3C","IL1B","CCL20","G0S2","LYZ","SERPINB9"
+,"DNAJB1","JUN","HSPA1B")
+
+
+
+Idents(MacroCluster) <- factor(Idents(MacroCluster), levels = c("0", "1", "2", "3"))
+
+
+
+MacroDot <- DotPlot(MacroCluster, features = markers.to.plot, dot.scale = 10, cols = c("white", "maroon")) + RotatedAxis()
+MacroDot
+```
+
+#Custom Colors dotplot
+```{r}
+library(ggplot2)
+
+# 1. Generate dotplot data
+markers.to.plot <- c("C1QB", "RNASE1", "CCL13",
+                     "SEMA3C", "IL1B", "CCL20",
+                     "G0S2", "LYZ", "SERPINB9",
+                     "DNAJB1", "JUN", "HSPA1B")
+
+Idents(MacroCluster) <- factor(Idents(MacroCluster), levels = c("0", "1", "2", "3"))
+
+# Extract DotPlot data
+dot_data <- DotPlot(MacroCluster, features = markers.to.plot, dot.scale = 10)$data
+
+# 2. Assign manual gene color mapping
+gene_colors <- c(rep("#f7766dff", 3),  # First 3 genes
+                 rep("#94aa01ff", 3), # Next 3
+                 rep("#00bae3ff", 3), # Next 3
+                 rep("#db71fbff", 3)) # Last 3
+
+names(gene_colors) <- markers.to.plot
+
+# 3. Plot manually
+MacroDot <- ggplot(dot_data, aes(x = features.plot, y = id, size = pct.exp, color = features.plot)) +
+  geom_point() +
+  scale_color_manual(values = gene_colors) +
+  scale_size(range = c(0, 10)) +  # Matches dot.scale = 10
+  theme_minimal() +
+  xlab("Gene") + ylab("Cluster") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  guides(color = "none")  # Hide gene color legend (optional)
+
+MacroDot
+
+```
+
+
+```{r}
+library(ggplot2)
+
+# Extract DotPlot data
+dot_data <- DotPlot(MacroCluster, features = markers.to.plot, dot.scale = 10)$data
+
+# Assign gene colors (for outline)
+gene_outline_colors <- c(rep("#f7766dff", 3),
+                         rep("#94aa01ff", 3),
+                         rep("#00bae3ff", 3),
+                         rep("#db71fbff", 3))
+names(gene_outline_colors) <- markers.to.plot
+
+# Add color column to the data
+dot_data$outline_color <- gene_outline_colors[dot_data$features.plot]
+
+# Plot: fill = avg.exp (gradient), color = gene-based outline
+MacroDot <- ggplot(dot_data, aes(x = id, y = features.plot, size = pct.exp)) +
+  geom_point(aes(fill = avg.exp, color = outline_color), shape = 21, stroke = 1.2) +
+  scale_fill_gradient(low = "white", high = "black") +
+  scale_color_identity() +
+  scale_size(range = c(0, 10)) +
+  theme_minimal() +
+  xlab("Cluster") + ylab("Gene") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+MacroDot
+
+```
+
+
+
+
+#QC Plots
+```{r}
+VlnPlot(MacroCluster, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3) 
+```
+
+
+```{r}
+FeaturePlot(MacroCluster, features = c("IL10"))
+```
+
+
+```{r}
+FeaturePlot(MacroCluster, features = c("IL1B"),  cols = c("lightgrey","#94aa01ff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r}
+FeaturePlot(MacroCluster, features = c("G0S2"),  cols = c("lightgrey","#00bae3ff"),min.cutoff = 0, max.cutoff = 4)
+
+```
+
+
+
+```{r}
+FeaturePlot(MacroCluster, features = c("HSPA1B"),  cols = c("lightgrey","#db71fbff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+
+```{r}
+FeaturePlot(MacroCluster, features = c("C1QB"),  cols = c("lightgrey","#f7766dff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+
+```{r}
+pbmc.markers <- FindAllMarkers(MacroCluster, only.pos = TRUE)
+
+# Step 2: Get top 10 markers per cluster by avg_log2FC
+top10 <- pbmc.markers %>%
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 5)
+
+# Step 3: Make heatmap
+DoHeatmap(MacroCluster, features = unique(top10$gene)) + NoLegend()
+```
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+# Step 1: Extract metadata with identities and timepoints
+meta_df <- MacroCluster@meta.data %>%
+  dplyr::select(cell_type = seurat_clusters, timepoint = day)  # Change to your actual timepoint column
+
+# Step 2: Count cells per cell type and timepoint
+cell_counts <- meta_df %>%
+  group_by(timepoint, cell_type) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n / sum(n) * 100)
+
+# Step 3: Plot
+StackedbarplotMacro = ggplot(cell_counts, aes(x = timepoint, y = percent, fill = cell_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(x = "Timepoint", y = "Percent of Cells", fill = "Cell Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#f7766dff","#94aa01ff","#00bae3ff","#db71fbff"))
+
+```
+
+```{r}
+MacroCluster$day <- ifelse(grepl("Day0", MacroCluster$orig.ident), "D0", "D1")
+
+# Confirm it worked:
+table(MacroCluster$day)
+
+DimPlot(MacroCluster, group.by = "day", label = TRUE) + ggtitle("D0 vs. D1")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

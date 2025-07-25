@@ -1,0 +1,245 @@
+
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(dplyr)
+library(patchwork)
+library(SeuratObject)
+
+#Merged_Donors <- readRDS("/home/gabriel.batzli/jamie_project/Merged_Donors_Object.rds")
+
+#Subsetting from Merged Donors to isolate Myeloid cluster
+FibroCluster <- subset(x = Merged_Donors, idents = c("Fibroblasts"))
+
+FibroCluster <- SplitObject(FibroCluster, split.by = "day")
+
+#Using SCTransform
+FibroCluster <- lapply(FibroCluster, SCTransform, vst.flavor = "v2")
+message("SCTransform Finished!")
+
+#Integration
+features <- SelectIntegrationFeatures(object.list = FibroCluster, nfeatures = 3000)
+FibroCluster <- PrepSCTIntegration(object.list = FibroCluster, anchor.features = features)
+message("Integration prepped, finding anchors now.")
+
+#Anchors
+DonorAnchors <- FindIntegrationAnchors(object.list = FibroCluster, normalization.method = "SCT", anchor.features = features)
+#saveRDS(DonorAnchors, "/home/gabriel.batzli/jamie_project/Myeloid_Anchors.rds")
+message("Anchors made and saved")
+
+FibroCluster <- IntegrateData(anchorset = DonorAnchors, normalization.method = "SCT")
+message("Integration complete.")
+
+
+#Run PCA to find PCs
+FibroCluster <- RunPCA(FibroCluster)
+#saveRDS(FibroCluster, "/home/gabriel.batzli/jamie_project/Myeloid_Cluster_Object.rds")
+message("Finished running PCA")
+
+#Creating Elbowplot
+ElbowPlot(FibroCluster)
+```
+
+```{r}
+install.packages("openxlsx", dependencies = TRUE)
+library(openxlsx)
+library(writexl)
+
+
+# Process the data
+
+FibroCluster <- RunUMAP(FibroCluster, reduction = "pca", dims = 1:11)
+
+FibroCluster <- FindNeighbors(FibroCluster, reduction = "pca", dims = 1:11)
+
+
+#Resolutions 
+FibroCluster <- FindClusters(FibroCluster, resolution = 0.5)
+FibroCluster <- FindClusters(FibroCluster, resolution = 0.3)
+FibroCluster <- FindClusters(FibroCluster, resolution = 0.2)
+FibroCluster <- FindClusters(FibroCluster, resolution = 0.1)
+message("FindClusters complete. Beginning UMAPs")
+
+
+# Umaps
+dim_plots <- list(
+  DimPlot_clusters0.5 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.5") + ggtitle("Resolution 0.5"),
+  DimPlot_clusters0.1 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.1") + ggtitle("Resolution 0.1"),
+  DimPlot_clusters0.05 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.05") + ggtitle("Resolution 0.05"),
+  DimPlot_clusters0.3 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.3") + ggtitle("Resolution 0.3"),
+  DimPlot_clusters0.2 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.2") + ggtitle("Resolution 0.2")
+)
+
+DimPlot_clusters0.5 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.5") + ggtitle("Resolution 0.5")
+DimPlot_clusters0.3 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.3") + ggtitle("Resolution 0.3")
+DimPlot_clusters0.2 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.2") + ggtitle("Resolution 0.2")
+DimPlot_clusters0.1 = DimPlot(FibroCluster, reduction = "umap", group.by = "integrated_snn_res.0.1") + ggtitle("Resolution 0.1")
+
+
+DimPlot_clusters0.3
+DimPlot_clusters0.5 
+DimPlot_clusters0.1 
+DimPlot_clusters0.2 
+```
+
+#UMAP of fibroblasts, including doublets 
+
+```{r}
+Labeled_UMAP.ids <- c("Hypodermal","Fascial","Reticular","Papillary","Papillary","Reticular","Papillary", "Doublets")
+names(Labeled_UMAP.ids) <- levels(FibroCluster)
+FibroCluster <- RenameIdents(FibroCluster, Labeled_UMAP.ids)
+DimPlot(FibroCluster, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+
+
+#FindAllMarkers
+```{r}
+FibroCluster <- PrepSCTFindMarkers(FibroCluster)
+FibroMarkers0.5 <- FindAllMarkers(FibroCluster, assay = "SCT", min.pct = 0.25, logfc.threshold = 0.25, group.by = "integrated_snn_res.0.5")
+write_xlsx(FibroMarkers0.5,"FibroMarkers_0.5.xlsx",col_names = TRUE,format_headers = TRUE)
+
+```
+
+
+
+#Subset out doublet
+```{r}
+FibroSinglets = subset(FibroCluster, idents = c("0","1","2","3","4","5","6"))
+FibroSinglets <- PrepSCTFindMarkers(FibroSinglets)
+```
+
+
+```{r}
+RunUMAP(FibroSinglets, dims = 1:15, reduction = "pca") 
+DimPlot(FibroSinglets, reduction = "umap")#Creates UMAP with 1:15 PCs. 
+```
+
+
+
+```{r}
+SaveSeuratRds(FibroSinglets)
+```
+
+
+#Labeled UMAP
+```{r}
+Labeled_UMAP.ids <- c("Hypodermal","Fascial","Reticular","Papillary","Papillary","Reticular","Papillary")
+names(Labeled_UMAP.ids) <- levels(FibroSinglets)
+FibroSinglets <- RenameIdents(FibroSinglets, Labeled_UMAP.ids)
+DimPlot(FibroSinglets, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+ggsave(filename = "LabeledUMAPFibro.png", height = 4, width = 8)
+```
+
+
+
+#Find All Markers
+```{r}
+MarkersFibroSinglets = FindAllMarkers(FibroSinglets, logfc.threshold = 0.25, min.pct = 0.25)
+write_xlsx(MarkersFibroSinglets,"Markers_Fibro_Singlets.xlsx",col_names = TRUE,format_headers = TRUE)
+```
+
+```{r}
+FeaturePlot(FibroCluster, features = "C3")
+```
+
+```{r}
+FeaturePlot(FibroCluster,features = "COL11A1")
+```
+
+```{r}
+FeaturePlot(FibroCluster, features = "C3")
+```
+
+```{r}
+FeaturePlot(FibroCluster, features = "APCDD1")
+```
+
+```{r}
+FeaturePlot(FibroCluster, features = "COL1A1")
+```
+
+
+```{r}
+FeaturePlot(FibroCluster, features = "WIF1")
+```
+
+```{r}
+FeaturePlot(FibroCluster, features = "POSTN")
+```
+
+```{r}
+FeaturePlot(FibroCluster, features = "MFAP5")
+```
+
+```{r}
+FeaturePlot(FibroCluster, features = "CCL19")
+```
+
+
+```{r}
+FeaturePlot(FibroSinglets, features = "APOD")
+```
+
+```{r}
+FeaturePlot(FibroSinglets, features = "LEPR")
+```
+
+```{r}
+FeaturePlot(FibroSinglets, features = "WIF1")
+
+```
+
+```{r}
+VlnPlot(FibroCluster, features = c("nFeature_RNA", "nCount_RNA"), ncol = 3) 
+ggsave(filename = "/Users/jamiechoe/Desktop/PracticeRNA/jamie_project/Fibroblasts_Subcluster/FibroViolinQC.png", height = 8, width = 8)
+```
+
+
+#Creating a stacked violin
+```{r}
+violin_genes = c("CCL19","APOD","FBLN1","LEPR","COMP","COL11A1","WIf1")
+VlnPlot(object = FibroSinglets, features = violin_genes, stack = TRUE)
+```
+#Trying a stacked Barplot
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+# Step 1: Extract metadata with identities and timepoints
+meta_df <- FibroSinglets@meta.data %>%
+  dplyr::select(cell_type = seurat_clusters, timepoint = day)  # Change to your actual timepoint column
+
+# Step 2: Count cells per cell type and timepoint
+cell_counts <- meta_df %>%
+  group_by(timepoint, cell_type) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n / sum(n) * 100)
+
+# Step 3: Plot
+StackedbarplotFibro = ggplot(cell_counts, aes(x = timepoint, y = percent, fill = cell_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(x = "Timepoint", y = "Percent of Cells", fill = "Cell Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#f7766dff","#d49200ff","#94aa01ff","#03bb38ff","#00bae3ff","#629dffff","#db71fbff"))
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

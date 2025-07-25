@@ -1,0 +1,101 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-07-24"
+---
+
+#Creating Metadata column of All cells, Fibroblasts, and Myeloid
+
+```{r}
+#Filtering Merged_Donors
+MergedFiltered <- subset(Merged_Donors, idents = c("Keratinocyte 1", "Keratinocyte 2", "Lymphoid", "Mast", "Endothelial", "Pericytes", "Melanocytes"))
+
+MergedFiltered$CellType = Idents(MergedFiltered)
+```
+
+
+```{r}
+MyeloidIntegrated$CellType = Idents(MyeloidIntegrated)
+FibroCluster$CellType = Idents(FibroCluster)
+
+
+
+# Extract metadata from each object
+fibro_meta <- FibroCluster@meta.data[, "CellType", drop = FALSE]
+myeloid_meta <- MyeloidIntegrated@meta.data[, "CellType", drop = FALSE]
+merged_meta <- MergedFiltered@meta.data[, "CellType", drop = FALSE]
+
+# Combine into one data frame
+combined_meta <- rbind(fibro_meta, myeloid_meta, merged_meta)
+
+# Add dataframe to Merged_Donors
+Merged_Donors <- AddMetaData(Merged_Donors, metadata = combined_meta)
+
+```
+
+# Creating UMAP
+```{r}
+DimPlot(Merged_Donors, reduction = "umap", group.by = "CellType", label = TRUE, repel = TRUE) + 
+  ggtitle("CellType")
+```
+
+
+
+# Creating Metadata column of All cells, Fibroblasts, Dendritic, langerhans, and MacroMono
+
+
+```{r}
+# Keeping only Mac 1, Mac 2 and Monocytes
+Myeloid_filtered <- subset(MyeloidIntegrated, idents = c("cDC2", "cDC1", "DC3", "Langerhans", "pDC","Doublets"))
+
+Myeloid_filtered$CellType = Idents(Myeloid_filtered)
+```
+
+```{r}
+# Extract identities (Idents) from each object as a data frame
+fibro_idents <- data.frame(All_identities = Idents(FibroCluster))
+myeloid_idents <- data.frame(All_identities = Idents(Myeloid_filtered))
+macro_idents <- data.frame(All_identities = Idents(MacroMono))
+merged_meta <- data.frame(All_identities = Idents(MergedFiltered))
+
+# Make sure rownames are cell names
+rownames(fibro_idents) <- names(Idents(FibroCluster))
+rownames(myeloid_idents) <- names(Idents(Myeloid_filtered))
+rownames(macro_idents) <- names(Idents(MacroMono))
+rownames(merged_meta) <- names(Idents(MergedFiltered))
+
+
+# Combine all into one data frame
+combined_idents <- rbind(fibro_idents, myeloid_idents, macro_idents, merged_meta)
+
+# Add combined identities metadata to Merged_Donors
+Merged_Donors <- AddMetaData(Merged_Donors, metadata = combined_idents)
+
+```
+
+# Creating UMAP
+```{r}
+DimPlot(Merged_Donors, reduction = "umap", group.by = "All_identities", label = TRUE, repel = TRUE) + 
+  ggtitle("All_identities")
+```
+
+```{r}
+SaveSeuratRds(Merged_Donors, "Merged_Donors_New.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

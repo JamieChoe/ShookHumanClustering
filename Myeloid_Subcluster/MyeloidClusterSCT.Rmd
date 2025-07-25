@@ -1,0 +1,222 @@
+---
+title: "MyeloidClusterSCT"
+output: html_document
+date: "2025-07-01"
+---
+
+#UMAP of MyeloidIntegrated, including doublets
+```{r}
+Labeled_UMAP.ids <- c("cDC2","Mac 2","Mac 1","Doublets","Monocytes","cDC1","DC3","Langerhans","pDC","Doublets")
+names(Labeled_UMAP.ids) <- levels(MyeloidIntegrated)
+MyeloidIntegrated <- RenameIdents(MyeloidIntegrated, Labeled_UMAP.ids)
+DimPlot(MyeloidIntegrated, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+
+
+
+#Identifying markers specific to dendritic cells
+```{r}
+DendriticmarkersMyeloid <- FindMarkers(
+  object = MyeloidIntegrated,
+  ident.1 = c(0, 5,6,8), # Specify the three clusters of interest
+  ident.2 = NULL,       # By default, compares to all other cells
+  min.pct = 0.25,       # Minimum percentage of cells in either group expressing the gene
+  logfc.threshold = 0.25, # Minimum log2 fold change
+  only.pos = TRUE
+)
+
+DendriticmarkersMyeloid
+```
+
+
+#QC Plot
+```{r}
+VlnPlot(MyeloidIntegrated, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3) 
+```
+
+
+
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = c("CD1C", "C1QA", "SOD2","CD163","CLEC9A","LAMP3","CD207","IGKC"))
+```
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "IL12", min.cutoff = 0)
+```
+
+
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "CD1C",cols = c("#eeeeee","#f7766dff"),min.cutoff = 0, max.cutoff = 4)
+```
+
+
+
+```{r setup, include=FALSE}
+FeaturePlot(MyeloidIntegrated, features = "CLEC9A",cols = c("lightgrey","#027661"),min.cutoff = 0, max.cutoff = 4)
+```
+
+
+```{r setup, include=FALSE}
+FeaturePlot(MyeloidIntegrated, features = "C1QA",cols = c("lightgrey","#94aa01"),min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r setup, include=FALSE}
+FeaturePlot(MyeloidIntegrated, features = "CD8",min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "SOD2", cols = c("lightgrey","#d49200"),min.cutoff = 0, max.cutoff = 4)
+```
+
+
+```{r setup, include=FALSE}
+FeaturePlot(MyeloidIntegrated, features = "CLEC9A")
+```
+
+```{r}
+FeaturePlot(MyeloidIntegrated, features = "FCN1",cols = c("lightgrey","#03c17d"),min.cutoff = 0, max.cutoff = 4)
+```
+
+
+```{r setup, include=FALSE}
+FeaturePlot(MyeloidIntegrated, features = "LAMP3",cols = c("#eeeeee","#00bae3"),min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r setup, include=FALSE}
+FeaturePlot(MyeloidIntegrated, features = "CD207",cols = c("lightgrey","#9591fc"),min.cutoff = 0, max.cutoff = 4)
+```
+
+```{r setup, include=FALSE}
+FeaturePlot(MyeloidIntegrated, features = "IGKC")
+```
+
+
+```{r setup, include=FALSE}
+FeaturePlot(MyeloidIntegrated, features = "MZB1",cols = c("#eeeeee","#db71fb"),min.cutoff = 0, max.cutoff = 4)
+```
+
+#Subsetting Doublets out
+```{r}
+MyeloidSinglets = subset(MyeloidIntegrated, idents = c("0","1","2","4","5","6","7","8"))
+```
+
+
+
+
+
+```{r}
+Labeled_UMAP.ids <- c("cDC2","Mac 2","Mac 1","Monocytes","cDC1","DC3","Langerhans","pDC")
+names(Labeled_UMAP.ids) <- levels(MyeloidSinglets)
+MyeloidSinglets <- RenameIdents(MyeloidSinglets, Labeled_UMAP.ids)
+DimPlot(MyeloidSinglets, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+ggsave(filename = "LabeledUMAPMyeloid.png", height = 4, width = 8)
+```
+#Saving MyeloidSinglets
+```{r}
+SaveSeuratRds(MyeloidSinglets)
+```
+
+
+```{r}
+markers.to.plot <- c("IL23A",
+"ALOX15",
+"CD1C",
+"PTTG1",
+"AREG",
+"CCL18",
+"MAMDC2",
+"CCL13",
+"LYVE1",
+"RAB3IL1",
+"HEY1",
+"CCL20",
+"KANK1",
+"SERPINB2",
+"CRADD",
+"FAM83F",
+"FERMT1",
+"AHNAK2",
+"RP11-191L9.4",
+"NECTIN4",
+"PLAC8",
+"FPR2",
+"S100A12",
+"THBS1",
+"FCN1",
+"CLEC9A",
+"XCR1",
+"PPY",
+"PAK3",
+"LINC01724",
+"TREML1",
+"ADAM12",
+"CCDC68",
+"SYNPO",
+"UBD",
+"RP11-597D13.8",
+"IL22RA2",
+"CHAD",
+"SLC27A2",
+"CD207",
+"PTCRA",
+"IGLC3",
+"MZB1",
+"JCHAIN",
+"GZMB",
+"LINC01436",
+"MEG8",
+"F10",
+"WIF1",
+"HAS2")
+
+Idents(MyeloidIntegrated) <- factor(Idents(MyeloidIntegrated), levels = c("0", "1", "2", "3","4","5","6","7","8","9"))
+
+
+
+MachroDot <- DotPlot(MyeloidIntegrated, features = markers.to.plot, dot.scale = 10, cols = c("white", "maroon")) + RotatedAxis()
+MachroDot
+```
+
+
+#Comparing the mac clusters
+```{r}
+Cluster2.v.Cluster4 = FindMarkers(MyeloidIntegrated, ident.1 = "Mac 3", ident.2 = "Mac 1", only.pos = TRUE)
+```
+
+#Violin Plots
+```{r}
+Idents(MyeloidSinglets) <- factor(Idents(MyeloidSinglets), levels = c("Mac 1","Mac 2","Monocytes","cDC2","DC3","cDC1","pDC","Langerhans"))
+
+
+
+
+violin_genes_myeloid = c("CD40","CD14","CCL20","C1QA","FCN1","CD1C","LAMP3","CLEC9A","MZB1","CD207")
+VlnPlot(object = MyeloidSinglets, features = violin_genes_myeloid, stack = TRUE)
+```
+
+```{r}
+violin_genes_Macro_DC = c("CD40","CD14")
+VlnPlot(object = MyeloidIntegrated, features = violin_genes_Macro_DC, stack = TRUE)
+```
+
+
+#Changing cluster of UMAP
+```{r}
+UMAPMyeloidcolors <- c("#90EE90", "#32CD32", "#228B22", "#018749", "#1C352D", "#004526", "#568203", "#4A5D23")
+DimPlot(MyeloidSinglets, reduction = "umap", group.by = "integrated_snn_res.0.2", cols = UMAPMyeloidcolors) 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
